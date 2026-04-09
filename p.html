@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Attendance System Pro</title>
+
+<style>
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: linear-gradient(135deg, #4facfe, #00f2fe);
+  color: #fff;
+  text-align: center;
+  min-height: 100vh;
+}
+
+.hidden { display: none !important; }
+
+input, select, button {
+  margin: 8px;
+  padding: 10px;
+  width: 90%;
+  max-width: 300px;
+  border-radius: 8px;
+  border: none;
+  font-size: 16px;
+}
+
+button {
+  background: #222;
+  color: #fff;
+  cursor: pointer;
+  transition: 0.2s;
+  font-weight: bold;
+}
+button:hover {
+  transform: scale(1.05);
+}
+
+.activePeriod {
+  background: #fff !important;
+  color: #000 !important;
+}
+
+.container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 10px;
+  padding: 10px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.box {
+  background: #ffffff33;
+  padding: 15px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.2s;
+  font-weight: bold;
+  font-size: 18px;
+  user-select: none;
+}
+.box:hover {
+  transform: scale(1.05);
+}
+
+.present { background: #28a745; color: white; }
+.absent { background: #dc3545; color: white; }
+
+#periodButtons button {
+  width: auto;
+  margin: 5px;
+}
+
+.list {
+  background: #ffffff22;
+  margin: 10px auto;
+  padding: 15px;
+  border-radius: 10px;
+  max-width: 400px;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.list input {
+  width: 70px;
+  margin: 0;
+  text-align: center;
+}
+
+.dashboard-card {
+  background: #ffffff22;
+  padding: 30px;
+  border-radius: 15px;
+  max-width: 400px;
+  margin: 20px auto;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+h2, h3, h4 { margin-top: 20px; }
+hr { border: 1px solid rgba(255,255,255,0.2); width: 80%; margin: 20px auto; }
+</style>
+
+</head>
+<body>
+
+<h2>📊 Attendance System Pro</h2>
+
+<div id="loginDiv">
+  <select id="role">
+    <option value="admin">Admin</option>
+    <option value="teacher">Teacher</option>
+    <option value="student">Student</option>
+  </select>
+
+  <input id="username" placeholder="Username / Roll No">
+  <input id="password" type="password" placeholder="Password / Roll No">
+
+  <button onclick="login()">Login</button>
+</div>
+
+<div id="studentDiv" class="hidden">
+  <h3>Student Dashboard</h3>
+  <button onclick="logout()">Logout</button>
+  <hr>
+  
+  <div class="dashboard-card">
+    <h3 id="studentRollDisplay" style="margin-top:0;"></h3>
+    <h4 id="studentClassDisplay" style="color: #ddd;"></h4>
+    <div id="studentPercentDisplay"></div>
+  </div>
+</div>
+
+<div id="adminDiv" class="hidden">
+  <h3>Admin Panel</h3>
+  <button onclick="logout()">Logout</button>
+  <hr>
+
+  <h4>1. Manage Sections</h4>
+  <input id="className" placeholder="Section Name">
+  <button onclick="createClass()">Create Section</button>
+  <br>
+
+  <h4>2. Select Section to Edit</h4>
+  <select id="classSelect" onchange="showStudents(); loadAdminPercent();">
+    <option value="" disabled selected>Select a Section...</option>
+  </select>
+
+  <div style="margin-top: 15px;">
+    <input id="rollNo" placeholder="Student Roll No">
+    <button onclick="addStudent()">Add Student</button>
+  </div>
+  
+  <div id="studentList" style="margin-top: 10px;"></div>
+  <hr>
+
+  <h3>📊 Edit Attendance Percentage</h3>
+  <p style="font-size: 14px; opacity: 0.9;">Select a section above to view and edit student percentages.</p>
+  <div id="adminPercentList"></div>
+  <button id="savePercentBtn" onclick="savePercent()" class="hidden" style="background:#28a745;">Save Percentages</button>
+  <h3 id="adminMsg"></h3>
+
+  <hr>
+  <h4>Manage Teachers</h4>
+  <input id="teacherUser" placeholder="Teacher Username">
+  <input id="teacherPass" placeholder="Teacher Password">
+  <button onclick="createTeacher()">Add Teacher</button>
+
+  <div id="teacherList" style="margin-top: 10px;"></div>
+</div>
+
+<div id="teacherDiv" class="hidden">
+  <h3>Teacher Panel</h3>
+  <button onclick="logout()">Logout</button>
+  <hr>
+
+  <h4 id="todayDate"></h4>
+
+  <select id="teacherClassSelect" onchange="showPeriods()">
+    <option value="" disabled selected>Select a Section...</option>
+  </select>
+
+  <div id="teacherPlaceholder" style="margin-top: 40px; font-size: 18px; font-weight: bold; padding: 20px;">
+    </div>
+
+  <div id="periodButtons"></div>
+
+  <div class="container" id="grid"></div>
+
+  <button id="submitBtn" onclick="submitAttendance()" class="hidden" style="background:#28a745; margin-top:20px;">
+    Submit Attendance
+  </button>
+
+  <h3 id="result"></h3>
+</div>
+
+<script>
+// --- GLOBAL VARIABLES ---
+let loginDiv = document.getElementById("loginDiv");
+let adminDiv = document.getElementById("adminDiv");
+let teacherDiv = document.getElementById("teacherDiv");
+let studentDiv = document.getElementById("studentDiv");
+
+// Load DB from local storage
+let db = JSON.parse(localStorage.getItem("db")) || {};
+
+// Safety checks
+if (!db.classes) db.classes = {};
+if (!db.teachers) db.teachers = {};
+if (!db.manualPercent) db.manualPercent = {};
+
+let tempAttendance = {};
+let currentPeriod = null;
+
+// --- UTILITY FUNCTIONS ---
+function save() {
+  localStorage.setItem("db", JSON.stringify(db));
+}
+
+function getDate() {
+  return new Date().toISOString().split("T")[0];
+}
+
+function showTodayDate() {
+  document.getElementById("todayDate").innerText = "Date: " + new Date().toDateString();
+}
+
+// --- LOGIN & LOGOUT ---
+function login() {
+  let roleVal = document.getElementById("role").value;
+  let user = document.getElementById("username").value.trim();
+  let pass = document.getElementById("password").value.trim();
+
+  if (roleVal === "admin" && user === "admin" && pass === "1234") {
+    loginDiv.classList.add("hidden");
+    adminDiv.classList.remove("hidden");
+    loadAdmin();
+  } 
+  else if (roleVal === "teacher") {
+    let t = db.teachers[user];
+    if (t && t.password === pass) {
+      loginDiv.classList.add("hidden");
+      teacherDiv.classList.remove("hidden");
+      loadTeacher();
+    } else {
+      alert("Invalid Teacher credentials!");
+    }
+  }
+  else if (roleVal === "student") {
+    if (user === pass && user !== "") {
+      let foundStudent = false;
+      let studentClass = "";
+      let studentIndex = -1;
+
+      for (let c in db.classes) {
+        let cls = db.classes[c];
+        let idx = cls.students.findIndex(s => s.roll === user);
+        if (idx !== -1) {
+          foundStudent = true;
+          studentClass = c;
+          studentIndex = idx;
+          break;
+        }
+      }
+
+      if (foundStudent) {
+        loginDiv.classList.add("hidden");
+        studentDiv.classList.remove("hidden");
+        loadStudentDashboard(user, studentClass, studentIndex);
+      } else {
+        alert("Student Roll Number not found in the database!");
+      }
+    } else {
+      alert("For students, both Username and Password must be your exact Roll Number.");
+    }
+  }
+}
+
+// 🔥 FIXED LOGOUT FUNCTION: Manually resets screens instead of reloading page
+function logout() {
+  // Hide all inner panels
+  adminDiv.classList.add("hidden");
+  teacherDiv.classList.add("hidden");
+  studentDiv.classList.add("hidden");
+
+  // Show login screen
+  loginDiv.classList.remove("hidden");
+
+  // Clear inputs
+  document.getElementById("password").value = "";
+  
+  // Reset teacher UI components for the next login
+  document.getElementById("grid").innerHTML = "";
+  document.getElementById("periodButtons").innerHTML = "";
+  document.getElementById("submitBtn").classList.add("hidden");
+  document.getElementById("result").innerText = "";
+  document.getElementById("teacherClassSelect").value = "";
+}
+
+// --- STUDENT FUNCTIONS ---
+function loadStudentDashboard(roll, className, index) {
+  document.getElementById("studentRollDisplay").innerText = "👤 Roll No: " + roll;
+  document.getElementById("studentClassDisplay").innerText = "Section: " + className;
+
+  let cls = db.classes[className];
+  let total = 0, present = 0;
+
+  for (let d in cls.attendance) {
+    for (let p in cls.attendance[d]) {
+      total++;
+      if (cls.attendance[d][p][index] === "present") present++;
+    }
+  }
+
+  let calc = total ? ((present / total) * 100).toFixed(2) : 0;
+  let manual = db.manualPercent[roll];
+  let finalPercent = (manual !== undefined && manual !== "") ? manual : calc;
+
+  document.getElementById("studentPercentDisplay").innerHTML = `
+    <hr>
+    <h3>Overall Attendance</h3>
+    <h1 style="color: #fff; font-size: 55px; margin: 10px 0; text-shadow: 2px 2px 5px rgba(0,0,0,0.3);">${finalPercent}%</h1>
+    <p style="color: #ddd;">Calculated Classes: ${present} Attended / ${total} Total</p>
+  `;
+}
+
+// --- ADMIN FUNCTIONS ---
+function createClass() {
+  let cName = document.getElementById("className").value.trim();
+  if (!cName) return;
+  if (!db.classes[cName]) {
+    db.classes[cName] = { students: [], attendance: {} };
+    save();
+    loadAdmin();
+    document.getElementById("className").value = ""; 
+  }
+}
+
+function loadAdmin() {
+  let cSelect = document.getElementById("classSelect");
+  cSelect.innerHTML = "<option value='' disabled selected>Select a Section...</option>";
+  for (let c in db.classes) {
+    cSelect.add(new Option(c, c));
+  }
+  showTeachers();
+}
+
+function addStudent() {
+  let c = document.getElementById("classSelect").value;
+  let roll = document.getElementById("rollNo").value.trim();
+  if (!c) {
+    alert("Please select a Section first!");
+    return;
+  }
+  if (!roll) return;
+
+  if (db.classes[c].students.some(s => s.roll === roll)) {
+    alert("This student is already in this section.");
+    return;
+  }
+
+  db.classes[c].students.push({ roll: roll });
+  save();
+  showStudents();
+  loadAdminPercent();
+  document.getElementById("rollNo").value = ""; 
+}
+
+function showStudents() {
+  let c = document.getElementById("classSelect").value;
+  if (!c || !db.classes[c]) return;
+
+  document.getElementById("studentList").innerHTML = db.classes[c].students.map((s, i) =>
+    `<span style="display:inline-block; margin:5px; padding:5px; background:rgba(0,0,0,0.2); border-radius:5px;">
+      ${s.roll} <button onclick="del(${i})" style="margin:0; padding:2px 5px; background:transparent; cursor:pointer;">❌</button>
+    </span>`
+  ).join("");
+}
+
+function del(i) {
+  let c = document.getElementById("classSelect").value;
+  db.classes[c].students.splice(i, 1);
+  save();
+  showStudents();
+  loadAdminPercent();
+}
+
+function createTeacher() {
+  let user = document.getElementById("teacherUser").value.trim();
+  let pass = document.getElementById("teacherPass").value.trim();
+  if (!user || !pass) return;
+  db.teachers[user] = { password: pass };
+  save();
+  showTeachers();
+  document.getElementById("teacherUser").value = "";
+  document.getElementById("teacherPass").value = "";
+}
+
+function showTeachers() {
+  document.getElementById("teacherList").innerHTML = Object.keys(db.teachers).map(t => 
+    `<span style="display:inline-block; margin:5px; padding:5px; background:rgba(0,0,0,0.2); border-radius:5px;">${t}</span>`
+  ).join("");
+}
+
+function loadAdminPercent() {
+  let c = document.getElementById("classSelect").value;
+  if (!c || !db.classes[c]) return;
+  let cls = db.classes[c];
+  let html = "";
+
+  if (cls.students.length === 0) {
+    document.getElementById("adminPercentList").innerHTML = "<p>No students in this section.</p>";
+    document.getElementById("savePercentBtn").classList.add("hidden");
+    return;
+  }
+
+  cls.students.forEach((s, i) => {
+    let total = 0, present = 0;
+
+    for (let d in cls.attendance) {
+      for (let p in cls.attendance[d]) {
+        total++;
+        if (cls.attendance[d][p][i] === "present") present++;
+      }
+    }
+
+    let calc = total ? ((present / total) * 100).toFixed(2) : 0;
+    let manual = db.manualPercent[s.roll] ?? calc;
+
+    html += `
+    <div class="list">
+      <div>
+        <b>Roll:</b> ${s.roll} <br>
+        <span style="font-size:12px; color:#ddd;">System Calc: ${calc}%</span>
+      </div>
+      <div>
+        <input type="number" id="p_${s.roll}" value="${manual}"> <b>%</b>
+      </div>
+    </div>`;
+  });
+
+  document.getElementById("adminPercentList").innerHTML = html;
+  document.getElementById("savePercentBtn").classList.remove("hidden");
+}
+
+function savePercent() {
+  let c = document.getElementById("classSelect").value;
+  let cls = db.classes[c];
+
+  cls.students.forEach(s => {
+    let val = document.getElementById("p_" + s.roll).value;
+    db.manualPercent[s.roll] = val; 
+  });
+
+  save();
+  document.getElementById("adminMsg").innerText = "Percentages Saved Successfully ✅";
+  setTimeout(() => { document.getElementById("adminMsg").innerText = ""; }, 3000);
+}
+
+// --- TEACHER FUNCTIONS ---
+function loadTeacher() {
+  let tSelect = document.getElementById("teacherClassSelect");
+  tSelect.innerHTML = "<option value='' disabled selected>Select a Section...</option>";
+  
+  let count = 0;
+  for (let c in db.classes) {
+    tSelect.add(new Option(c, c));
+    count++;
+  }
+  
+  showTodayDate();
+
+  let placeholder = document.getElementById("teacherPlaceholder");
+  placeholder.classList.remove("hidden"); // Make sure it's visible if they logged back in
+
+  if(count === 0) {
+     placeholder.innerHTML = "⚠️ <b>No sections found.</b><br><br>Please click 'Logout' above, log in as <b>Admin</b>, and create a section first.";
+     placeholder.style.color = "#ffeb3b"; // Yellow warning color
+  } else {
+     placeholder.innerText = "☝️ Please select a section from the dropdown above to start marking attendance.";
+     placeholder.style.color = "#fff";
+  }
+}
+
+function showPeriods() {
+  let pBtns = document.getElementById("periodButtons");
+  pBtns.innerHTML = "";
+  document.getElementById("grid").innerHTML = "";
+  document.getElementById("submitBtn").classList.add("hidden");
+
+  let c = document.getElementById("teacherClassSelect").value;
+  if (!c) return;
+
+  // Hide the placeholder text once they select a class
+  document.getElementById("teacherPlaceholder").classList.add("hidden");
+
+  for (let i = 1; i <= 6; i++) {
+    let btn = document.createElement("button");
+    btn.innerText = "Period " + i;
+
+    btn.onclick = function() {
+      document.querySelectorAll("#periodButtons button").forEach(b => b.classList.remove("activePeriod"));
+      this.classList.add("activePeriod");
+      loadGrid(i);
+    };
+
+    pBtns.appendChild(btn);
+  }
+
+  // Auto-click the first period
+  setTimeout(() => {
+    let firstBtn = document.querySelector("#periodButtons button");
+    if(firstBtn) firstBtn.click();
+  }, 100);
+}
+
+function loadGrid(period) {
+  let c = document.getElementById("teacherClassSelect").value;
+  if (!c || !db.classes[c]) return;
+  let cls = db.classes[c];
+  
+  let grid = document.getElementById("grid");
+
+  if (cls.students.length === 0) {
+    grid.innerHTML = "No students in this section ❗";
+    return;
+  }
+
+  let date = getDate();
+  currentPeriod = period;
+
+  if (!tempAttendance[date]) tempAttendance[date] = {};
+  if (!tempAttendance[date][period]) {
+    tempAttendance[date][period] = (cls.attendance[date] && cls.attendance[date][period]) 
+      ? { ...cls.attendance[date][period] } 
+      : {};
+  }
+
+  let rec = tempAttendance[date][period];
+
+  grid.innerHTML = "";
+  document.getElementById("submitBtn").classList.remove("hidden");
+  document.getElementById("result").innerText = "";
+
+  cls.students.forEach((s, i) => {
+    let d = document.createElement("div");
+    d.className = "box";
+    d.innerText = s.roll;
+
+    if (rec[i] === "present") d.classList.add("present");
+    if (rec[i] === "absent") d.classList.add("absent");
+
+    d.onclick = () => {
+      if (!rec[i]) rec[i] = "present";
+      else if (rec[i] === "present") rec[i] = "absent";
+      else delete rec[i];
+      loadGrid(period);
+    };
+
+    grid.appendChild(d);
+  });
+}
+
+function submitAttendance() {
+  let c = document.getElementById("teacherClassSelect").value;
+  let cls = db.classes[c];
+  let date = getDate();
+  let rec = tempAttendance[date][currentPeriod];
+
+  if (!cls.attendance[date]) cls.attendance[date] = {};
+  cls.attendance[date][currentPeriod] = rec;
+
+  save();
+  document.getElementById("result").innerText = `Period ${currentPeriod} Attendance Saved ✅`;
+  
+  setTimeout(() => { document.getElementById("result").innerText = ""; }, 3000);
+}
+</script>
+</body>
+</html>
